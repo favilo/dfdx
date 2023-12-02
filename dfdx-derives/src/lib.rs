@@ -817,7 +817,7 @@ pub fn save_safetensors(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                         where_clause
                             .predicates
                             .push(parse_quote!(#ty: dfdx_core::nn_traits::SaveSafeTensors));
-                        quote_spanned!(f.span()=>self.#name.write_safetensors(&format!("{location}{}", #name_str), tensors);)
+                        quote_spanned!(f.span()=>self.#name.write_safetensors(&format!("{location}{}{}", if location.is_empty() { "" } else { "."}, #name_str), tensors);)
                     } else {
                         Default::default()
                     }
@@ -833,7 +833,7 @@ pub fn save_safetensors(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                         where_clause
                             .predicates
                             .push(parse_quote!(#ty: dfdx_core::nn_traits::SaveSafeTensors));
-                        quote_spanned!(f.span()=>self.#index.write_safetensors(&format!("{location}{}", #index), tensors);)
+                        quote_spanned!(f.span()=>self.#index.write_safetensors(&format!("{location}{}{}", if location.is_empty() { "" } else { "."}, #index), tensors);)
                     } else {
                         Default::default()
                     }
@@ -880,7 +880,7 @@ pub fn load_safetensors(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                         where_clause
                             .predicates
                             .push(parse_quote!(#ty: dfdx_core::nn_traits::LoadSafeTensors));
-                        quote_spanned!(f.span()=>self.#name.read_safetensors(&format!("{location}{}", #name_str), tensors)?;)
+                        quote_spanned!(f.span()=>self.#name.read_safetensors(&format!("{location}{}{}", if location.is_empty() { "" } else { "."}, #name_str), tensors)?;)
                     } else {
                         Default::default()
                     }
@@ -895,7 +895,7 @@ pub fn load_safetensors(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                         where_clause
                             .predicates
                             .push(parse_quote!(#ty: dfdx_core::nn_traits::LoadSafeTensors));
-                        quote_spanned!(f.span()=>self.#index.read_safetensors(&format!("{location}{}", #index), tensors)?;)
+                        quote_spanned!(f.span()=>self.#index.read_safetensors(&format!("{location}{}{}", if location.is_empty() { "" } else { "."}, #index), tensors)?;)
                     } else {
                         Default::default()
                     }
