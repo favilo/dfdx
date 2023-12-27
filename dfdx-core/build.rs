@@ -217,48 +217,11 @@ mod cuda {
 #[cfg(feature = "webgpu")]
 mod webgpu {
     pub fn build_spv() {
-        let out_dir = std::env::var("OUT_DIR").unwrap();
-        let kernel_paths: Vec<std::path::PathBuf> = glob::glob("src/**/*.glsl")
-            .unwrap()
-            .map(|p| p.unwrap())
-            .collect();
-        for path in &kernel_paths {
-            println!("cargo:rerun-if-changed={}", path.display());
-        }
-
-        kernel_paths
-            .iter()
-            .for_each(|p| println!("cargo:rerun-if-changed={}", p.display()));
-
-        let children = kernel_paths
-                .iter()
-                .map(|p| {
-                    // TODO: we need to build this for both float and double
-                    let out_path: std::path::PathBuf = out_dir.clone().into();
-                    let base = p.file_stem().unwrap();
-                    let new_name = format!("{}.float.spv", base.to_str().unwrap());
-                    let out_file = &out_path.join(new_name);
-                    eprintln!("out_file: {:?}", out_file);
-                    std::process::Command::new("glslc")
-                        .args(["-std=460core"])
-                        .args(["-fshader-stage=compute"])
-                        .args(["-DTYPENAME=float"])
-                        .args(["-o", &out_file.as_os_str().to_str().unwrap()])
-                        .arg(p)
-                        .stdout(std::process::Stdio::piped())
-                        .stderr(std::process::Stdio::piped())
-                        .spawn()
-                        .expect("glslc failed to start. Ensure that you have shaderc installed and that `glslc` is in your PATH.")
-                })
-                .collect::<Vec<_>>();
-        for (kernel_path, child) in kernel_paths.iter().zip(children.into_iter()) {
-            let output = child.wait_with_output().expect("glslc failed to run. Ensure that you have shaderc installed and that `glslc` is in your PATH.");
-            assert!(
-                output.status.success(),
-                "glslc error while compiling {kernel_path:?}:\n\n# stdout\n{:#}\n\n# stderr\n{:#}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
+        for kernel in std::fs::read_dir("wgpu_kernels").expect("Error finding kernels folder") {
+            let path = kernel.expect("Invalid path in kernels folder").path();
+            spirv_builder::SpirvBuilder::new(path, "spirv-unknown-vulkan1.1")
+                .build()
+                .expect("Kernel failed to compile");
         }
     }
 }

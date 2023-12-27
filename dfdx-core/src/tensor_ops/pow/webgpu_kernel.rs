@@ -4,7 +4,13 @@ use crate::prelude::{ops::UnaryKernel, webgpu_kernels::webgpu_unary, Dtype, Webg
 
 const WGSL: &[u8] = b"TODO";
 
-webgpu_unary!(super::PowfKernelOp<f32>, f32, WGSL, WGSL);
+webgpu_unary!(
+    super::PowfKernelOp<f32>,
+    f32,
+    WGSL,
+    "pow_fwd_f32",
+    "pow_bwd_f32",
+);
 
 // TODO: Conflicting implementations of trait `UnaryKernel` for type `Webgpu`:
 impl UnaryKernel<super::PowiKernelOp, f32> for Webgpu

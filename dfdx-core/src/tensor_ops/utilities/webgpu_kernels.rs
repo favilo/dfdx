@@ -13,71 +13,53 @@ pub(crate) trait UnaryOpWebgpuKernel<E> {
     // /// Unique name for the kernel
     // const MODULE_NAME: &'static str;
 
-    /// Glsl source code for the forward pass
-    const GLSL_FWD_SPV: &'static [u8];
+    /// SpirV source code
+    const SPV_SOURCE: &'static [u8];
 
-    /// Glsl source code for the backward pass
-    const GLSL_BWD_SPV: &'static [u8];
+    /// Name of the forward function
+    const FWD_FN_NAME: &'static str;
+
+    /// Name of the backward function
+    const BWD_FN_NAME: &'static str;
 }
 
 macro_rules! webgpu_unary {
-    ($Op:path, $TypeName:ty, $Fwd:tt, $Bwd:tt) => {
+    ($Op:path, $TypeName:ty, $SPV:tt, $Fwd:tt, $Bwd:tt$(,)?) => {
         impl crate::tensor_ops::webgpu_kernels::UnaryOpWebgpuKernel<$TypeName> for $Op {
             const DF_USES_FX: bool = false;
             const HAS_CONST_DF: bool = false;
             // const MODULE_NAME: &'static str = stringify!($Op);
-            const GLSL_FWD_SPV: &'static [u8] = $Fwd;
-            const GLSL_BWD_SPV: &'static [u8] = $Bwd;
+            const SPV_SOURCE: &'static [u8] = $SPV;
+            const FWD_FN_NAME: &'static str = $Fwd;
+            const BWD_FN_NAME: &'static str = $Bwd;
         }
     };
-    (df(f(x)) $Op:path, $TypeName:ty, $Fwd:tt, $Bwd:tt) => {
+    (df(f(x)) $Op:path, $TypeName:ty, $SPV:tt, $Fwd:tt, $Bwd:tt$(,)?) => {
         impl crate::tensor_ops::webgpu_kernels::UnaryOpWebgpuKernel<$TypeName> for $Op {
             const DF_USES_FX: bool = true;
             const HAS_CONST_DF: bool = false;
             // const MODULE_NAME: &'static str = $Fwd;
-            const GLSL_FWD_SPV: &'static [u8] = $Fwd;
-            const GLSL_BWD_SPV: &'static [u8] = $Bwd;
+            const SPV_SOURCE: &'static [u8] = $SPV;
+            const FWD_FN_NAME: &'static str = $Fwd;
+            const BWD_FN_NAME: &'static str = $Bwd;
         }
     };
-    (const_df() $Op:path, $TypeName:ty, $Fwd:tt, $Bwd:tt) => {
+    (const_df() $Op:path, $TypeName:ty,$SPV:tt, $Fwd:tt, $Bwd:tt$(,)?) => {
         impl crate::tensor_ops::webgpu_kernels::UnaryOpWebgpuKernel<$TypeName> for $Op {
             const DF_USES_FX: bool = false;
             const HAS_CONST_DF: bool = true;
             // const MODULE_NAME: &'static str = $Fwd;
-            const GLSL_FWD_SPV: &'static [u8] = $Fwd;
-            const GLSL_BWD_SPV: &'static [u8] = $Bwd;
+            const SPV_SOURCE: &'static [u8] = $SPV;
+            const FWD_FN_NAME: &'static str = $Fwd;
+            const BWD_FN_NAME: &'static str = $Bwd;
         }
     };
 }
 
-/// Zero-sized marker type for forward pass TypeId
-#[derive(Debug, Default)]
-pub(crate) struct Forward<E: Dtype, K> {
-    _phantom: PhantomData<(E, K)>,
-}
-
-/// Zero-sized marker type for backward pass TypeId
-#[derive(Debug, Default)]
-pub(crate) struct Backward<E: Dtype, K> {
-    _phantom: PhantomData<(E, K)>,
-}
-
-pub(crate) trait HasGlslType {
-    const TYPE: &'static str;
-}
-
-impl HasGlslType for f32 {
-    const TYPE: &'static str = "float";
-}
-
-impl HasGlslType for f64 {
-    const TYPE: &'static str = "double";
-}
-
 pub(crate) use webgpu_unary;
-use wgpu::ComputePipelineDescriptor;
+use wgpu::{BindingType, ComputePipelineDescriptor, ShaderStages};
 
-impl<E: Dtype + HasGlslType, K: UnaryOpWebgpuKernel<E> + 'static> UnaryKernel<K, E> for Webgpu {
+impl<E: Dtype, K: UnaryOpWebgpuKernel<E> + 'static> UnaryKernel<K, E> for Webgpu {
     const BACKWARD_WITHOUT_INP: bool = K::DF_USES_FX;
     const BACKWARD_WITHOUT_DATA: bool = K::HAS_CONST_DF;
 
@@ -86,21 +68,67 @@ impl<E: Dtype + HasGlslType, K: UnaryOpWebgpuKernel<E> + 'static> UnaryKernel<K,
         op: K,
         inp: Cow<Tensor<S, E, Self>>,
     ) -> Result<Tensor<S, E, Self>, Error> {
-        if !self.shader_module_loaded(TypeId::of::<Forward<E, K>>()) {
-            self.load_shader_module::<E>(TypeId::of::<Forward<E, K>>(), K::GLSL_FWD_SPV);
+        if !self.shader_module_loaded(TypeId::of::<K>()) {
+            self.load_shader_module::<E>(TypeId::of::<K>(), K::SPV_SOURCE);
         }
 
         let cs_module = self
-            .get_shader_module(TypeId::of::<Forward<E, K>>())
+            .get_shader_module(TypeId::of::<K>())
             .ok_or(Error::WebgpuSourceLoadError)?;
-        let pipeline = self
-            .dev
-            .create_compute_pipeline(&ComputePipelineDescriptor {
-                label: None,
-                layout: None,
-                module: &cs_module,
-                entry_point: "main",
+        let mut entries = Vec::new();
+        if std::mem::size_of::<K>() > 0 {
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::COMPUTE,
+                ty: BindingType::Buffer {
+                    has_dynamic_offset: false,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    min_binding_size: None,
+                },
+                count: None,
             });
+        }
+        entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Buffer {
+                has_dynamic_offset: false,
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Buffer {
+                has_dynamic_offset: false,
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                min_binding_size: None,
+            },
+            count: None,
+        });
+
+        let bind_group_layout =
+            self.dev
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: &entries,
+                });
+        let pipeline_layout = self
+            .dev
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let pipeline_desc = ComputePipelineDescriptor {
+            label: None,
+            layout: Some(&pipeline_layout),
+            module: &cs_module,
+            entry_point: K::FWD_FN_NAME,
+        };
+        let pipeline = self.dev.create_compute_pipeline(&pipeline_desc);
         let bind_group_layout = pipeline.get_bind_group_layout(0);
         let op_storage = self.alloc_init::<K>(&[op])?;
         let numel = inp.data.len::<E>();
@@ -188,12 +216,12 @@ impl<E: Dtype + HasGlslType, K: UnaryOpWebgpuKernel<E> + 'static> UnaryKernel<K,
         out: &impl Tensorlike<S, E, Self>,
         grad_out: &Self::Vec,
     ) -> Result<(), Error> {
-        if !self.shader_module_loaded(TypeId::of::<Backward<E, K>>()) {
-            self.load_shader_module::<E>(TypeId::of::<Backward<E, K>>(), K::GLSL_BWD_SPV);
+        if !self.shader_module_loaded(TypeId::of::<K>()) {
+            self.load_shader_module::<E>(TypeId::of::<K>(), K::SPV_SOURCE);
         }
 
         let cs_module = self
-            .get_shader_module(TypeId::of::<Backward<E, K>>())
+            .get_shader_module(TypeId::of::<K>())
             .ok_or(Error::WebgpuSourceLoadError)?;
         let pipeline = self
             .dev

@@ -9,7 +9,13 @@ use crate::prelude::{
 
 const WGSL: &[u8] = b"TODO";
 
-webgpu_unary!(Scalar<f32>, f32, WGSL, WGSL);
+webgpu_unary!(
+    Scalar<f32>,
+    f32,
+    WGSL,
+    "scalar_add_fwd_f32",
+    "scalar_add_bwd_f32",
+);
 
 impl<E: Dtype> BinaryKernel<super::BinaryAddKernelOp, E> for Webgpu {
     const BACKWARD_WITHOUT_DATA: bool = true;

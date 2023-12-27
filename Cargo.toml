@@ -1,5 +1,10 @@
 [workspace]
-members = ["dfdx-core", "dfdx-derives", "dfdx"]
+members = [
+    "dfdx-core", 
+    "dfdx-derives", 
+    "dfdx", 
+    "dfdx-core/wgpu_kernels/abs"
+]
 resolver = "2"
 
 [workspace.dependencies]

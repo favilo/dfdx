@@ -1,16 +1,13 @@
 use super::AbsKernelOp;
 use crate::tensor_ops::webgpu_kernels::webgpu_unary;
 
-const GLSL_FWD: &str = include_str!("abs.fwd.glsl");
-const GLSL_BWD: &str = include_str!("abs.bwd.glsl");
-const SPV_FWD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/abs.fwd.float.spv"));
-const SPV_BWD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/abs.bwd.float.spv"));
+const SPV_FWD: &[u8] = include_bytes!(env!("abs.spv"));
 
-webgpu_unary!(AbsKernelOp, f32, SPV_FWD, SPV_BWD);
+webgpu_unary!(AbsKernelOp, f32, SPV_FWD, "abs_fwd_f32", "abs_bwd_f32");
 
 #[cfg(test)]
 mod tests {
-    use crate::{tensor::*, tensor_ops::*, tests::*};
+    use crate::{prelude::*, tensor::*, tests::*};
 
     #[test]
     fn test_webgpu_abs() {

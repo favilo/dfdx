@@ -3,10 +3,7 @@ use core::any::TypeId;
 use wgpu::ComputePipelineDescriptor;
 
 use crate::{
-    prelude::{
-        webgpu_kernels::{Forward, HasGlslType},
-        Dtype, Webgpu,
-    },
+    prelude::{Dtype, Webgpu},
     tensor_ops::reduction_utils::*,
 };
 
@@ -22,7 +19,7 @@ impl HasWebgpuKernel<f32> for Webgpu {
     const FNS: &'static [&'static str] = &["sum_to_fwd_f32", "sum_to_bwd_f32"];
 }
 
-impl<E: Dtype + HasGlslType> super::SumKernel<E> for Webgpu
+impl<E: Dtype> super::SumKernel<E> for Webgpu
 where
     Self: HasWebgpuKernel<E>,
 {
@@ -34,15 +31,16 @@ where
     where
         Src: crate::prelude::ReduceShapeTo<Dst, Ax>,
     {
-        if !self.shader_module_loaded(TypeId::of::<Forward<E, WebgpuSumKernel>>()) {
+        if !self.shader_module_loaded(TypeId::of::<WebgpuSumKernel>()) {
             self.load_shader_module::<E>(
-                TypeId::of::<Forward<E, WebgpuSumKernel>>(),
-                include_bytes!(concat!(env!("OUT_DIR"), "/sum_to.fwd.float.spv")),
+                TypeId::of::<WebgpuSumKernel>(),
+                b"TODO",
+                // include_bytes!(concat!(env!("OUT_DIR"), "/sum_to.fwd.float.spv")),
             );
         }
 
         let cs_module = self
-            .get_shader_module(TypeId::of::<Forward<E, WebgpuSumKernel>>())
+            .get_shader_module(TypeId::of::<WebgpuSumKernel>())
             .expect("shader module not loaded");
         let pipeline = self
             .dev
